@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Customer Query Classifier</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1b1f2a;--muted:#5d6475;--line:#dfe3ee;--accent:#4f46e5;--accent-text:#fff;--code:#f0f2f9;--ok:#0f7b4a;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--ok:#4cd694;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--ok:#4cd694;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.6rem;margin:0 0 4px}
+p.sub{margin:0 0 20px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+h2{font-size:1rem;margin:0 0 10px}
+textarea{width:100%;min-height:90px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips button{font-size:.85rem;padding:5px 10px;color:var(--muted)}
+#out{font-size:2.2rem;font-weight:700;color:var(--accent);min-height:2.8rem;letter-spacing:.5px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags span{border:1px solid var(--line);background:var(--code);border-radius:999px;padding:3px 10px;font-size:.82rem}
+.tags span.hit{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0;white-space:pre-wrap;word-break:break-word;font-size:.85rem;max-width:100%;overflow-x:auto}
+.note{color:var(--muted);font-size:.85rem;margin-top:8px}
+.ok{color:var(--ok);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1>Customer Query Classifier</h1>
+  <p class="sub">Enter a customer query. The output is exactly one category word: no explanation, no punctuation.</p>
+
+  <div class="card">
+    <h2>Customer query</h2>
+    <textarea id="q" placeholder="e.g. My package hasn’t arrived yet and it was due last week"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Classify</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <h2>Output</h2>
+    <div id="out" aria-live="polite"></div>
+    <div class="tags" id="tags" style="margin-top:8px"></div>
+    <div class="note" id="check"></div>
+  </div>
+
+  <div class="card">
+    <h2>Engineered prompt (copy into any LLM)</h2>
+    <pre id="prompt"></pre>
+    <div class="row">
+      <button id="copyT">Copy template</button>
+      <button id="copyF">Copy with my query filled in</button>
+      <span class="note" id="copied" style="align-self:center"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+const CATS=["Delivery","Shipping","Refund","Payment","Cancellation","Defect","Return","Account","Unknown"];
+
+const PROMPT=`You are a customer-query classifier for an e-commerce company.
+
+Classify the customer query into exactly ONE of these categories:
+Delivery, Shipping, Refund, Payment, Cancellation, Defect, Return, Account, Unknown
+
+Category guide:
+- Delivery: order late, not arrived, tracking, lost or wrong-address delivery
+- Shipping: shipping charges, methods, dispatch, international or free shipping
+- Refund: money back, refund status or delay
+- Payment: charges, failed or double payments, cards, UPI, billing, invoices
+- Cancellation: cancelling an order before it is delivered
+- Defect: damaged, broken, faulty or not-working product
+- Return: sending an item back, exchange, replacement, return pickup
+- Account: login, password, profile, OTP, locked or deleted account
+- Unknown: anything that fits none of the above
+
+Rules:
+1. Choose the single category that best matches the main intent.
+2. Output ONLY the category word, exactly as spelled above.
+3. No explanation, no punctuation, no quotes, no extra text.
+
+Examples:
+Query: Where is my parcel? It was due on Monday. -> Delivery
+Query: How much does express shipping cost? -> Shipping
+Query: I was charged twice for one order. -> Payment
+Query: The phone I received has a cracked screen. -> Defect
+Query: I forgot my password. -> Account
+Query: Do you sell gift cards in Mars colour? -> Unknown
+
+Query: {{QUERY}}
+Category:`;
+
+// Local rule engine: weighted keyword/phrase scoring. Order in CATS breaks ties.
+const RULES={
+ Delivery:[["not delivered",3],["not received",3],["hasn’t arrived",3],["hasn't arrived",3],["haven’t received",3],["haven't received",3],["not arrived",3],["where is my",3],["track",2],["tracking",2],["delivery",2],["deliver",2],["late",1],["delay",1],["courier",2],["parcel",1],["package",1],["arrive",2],["arrived",2],["lost",1],["wrong address",3],["out for delivery",3]],
+ Shipping:[["shipping",3],["shipping charge",3],["shipping cost",3],["shipping fee",3],["ship to",3],["ship",2],["shipped",1],["dispatch",2],["international",2],["free shipping",3],["express",1],["freight",2]],
+ Refund:[["refund",4],["money back",4],["reimburse",3],["get my money",3],["credited back",3]],
+ Payment:[["payment",3],["paid",2],["charged",3],["double charged",4],["card",2],["upi",3],["transaction",3],["billing",3],["invoice",3],["declined",3],["debited",3],["netbanking",3],["checkout",1],["coupon",1],["emi",2]],
+ Cancellation:[["cancel",4],["cancellation",4],["don’t want the order",3],["don't want the order",3],["stop my order",3],["call off",2]],
+ Defect:[["defective",4],["defect",4],["broken",3],["damaged",3],["not working",3],["doesn’t work",3],["doesn't work",3],["faulty",4],["stopped working",4],["cracked",3],["torn",2],["malfunction",3],["scratched",2],["dead on arrival",4]],
+ Return:[["return",4],["exchange",3],["replace",3],["replacement",3],["send back",3],["wrong size",2],["wrong item",2],["pickup",2],["pick up",2],["rma",3]],
+ Account:[["account",3],["login",3],["log in",3],["sign in",3],["password",3],["profile",2],["otp",2],["locked out",3],["username",3],["email address",2],["delete my account",4],["register",2],["sign up",2],["phone number",1]]
+};
+
+function score(q){
+  const t=q.toLowerCase();
+  const s={};
+  for(const c of CATS){ s[c]=0; }
+  for(const c in RULES){
+    for(const [kw,w] of RULES[c]){ if(t.includes(kw)) s[c]+=w; }
+  }
+  return s;
+}
+function classify(q){
+  if(!q||!q.trim()) return {label:"Unknown",s:score("")};
+  const s=score(q);
+  let best="Unknown",max=0;
+  for(const c of CATS){ if(c!=="Unknown" && s[c]>max){max=s[c];best=c;} }
+  return {label:best,s};
+}
+// Strict output guard: exactly one category word, nothing else.
+function enforce(label){ return CATS.includes(label)?label:"Unknown"; }
+
+const $=id=>document.getElementById(id);
+$("prompt").textContent=PROMPT;
+
+function run(){
+  const q=$("q").value;
+  const {label,s}=classify(q);
+  const out=enforce(label);
+  $("out").textContent=out;
+  $("tags").innerHTML="";
+  for(const c of CATS){
+    const sp=document.createElement("span");
+    sp.textContent=c+(s[c]?" · "+s[c]:"");
+    if(c===out) sp.className="hit";
+    $("tags").appendChild(sp);
+  }
+  const valid=/^[A-Za-z]+$/.test(out)&&CATS.includes(out);
+  $("check").innerHTML=valid?'<span class="ok">✓ Output check passed:</span> one category word, no punctuation or extra text.':'Output check failed.';
+}
+
+const samples=[
+ "Where is my order? It was supposed to arrive last Friday",
+ "How much is international shipping to Canada?",
+ "I want my money back for the cancelled item",
+ "I was charged twice on my credit card",
+ "Please cancel my order, I ordered by mistake",
+ "The headphones stopped working after two days",
+ "I want to return these shoes, wrong size",
+ "I can’t log in, forgot my password",
+ "Do you have a store in Paris?"
+];
+samples.forEach(t=>{
+  const b=document.createElement("button");
+  b.textContent=t.length>34?t.slice(0,32)+"…":t;
+  b.title=t;
+  b.onclick=()=>{$("q").value=t;run();};
+  $("chips").appendChild(b);
+});
+
+$("go").onclick=run;
+$("clear").onclick=()=>{$("q").value="";$("out").textContent="";$("tags").innerHTML="";$("check").textContent="";};
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))run();});
+
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);$("copied").textContent="Copied";}
+  catch(e){
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");$("copied").textContent="Copied";}catch(_){$("copied").textContent="Copy failed, select the text manually";}
+    ta.remove();
+  }
+  setTimeout(()=>$("copied").textContent="",1800);
+}
+$("copyT").onclick=()=>copy(PROMPT);
+$("copyF").onclick=()=>copy(PROMPT.replace("{{QUERY}}",$("q").value.trim()||"{{QUERY}}"));
+</script>
+</body>
+</html>
