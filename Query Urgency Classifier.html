@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Query Urgency Classifier</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1b1f2a;--muted:#5d6475;--line:#dfe3ee;--accent:#4f46e5;--accent-text:#fff;--code:#f0f2f9;--high:#c0262d;--med:#8a6a00;--low:#0f7b4a;--ok:#0f7b4a;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--high:#ff7b80;--med:#f0c24b;--low:#4cd694;--ok:#4cd694;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--high:#ff7b80;--med:#f0c24b;--low:#4cd694;--ok:#4cd694;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.6rem;margin:0 0 4px}
+p.sub{margin:0 0 20px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+h2{font-size:1rem;margin:0 0 10px}
+textarea{width:100%;min-height:90px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips button{font-size:.85rem;padding:5px 10px;color:var(--muted)}
+#out{font-size:2.2rem;font-weight:700;min-height:2.8rem;letter-spacing:.5px}
+#out.High{color:var(--high)}#out.Medium{color:var(--med)}#out.Low{color:var(--low)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tags span{border:1px solid var(--line);background:var(--code);border-radius:999px;padding:3px 10px;font-size:.82rem}
+.tags span.hit{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0;white-space:pre-wrap;word-break:break-word;font-size:.85rem;max-width:100%;overflow-x:auto}
+.note{color:var(--muted);font-size:.85rem;margin-top:8px}
+.ok{color:var(--ok);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1>Query Urgency Classifier</h1>
+  <p class="sub">Enter a customer query. The output is exactly one word: High, Medium or Low.</p>
+
+  <div class="card">
+    <h2>Customer query</h2>
+    <textarea id="q" placeholder="e.g. Money was deducted twice and I need it fixed immediately"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Classify urgency</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <h2>Output</h2>
+    <div id="out" aria-live="polite"></div>
+    <div class="tags" id="tags"></div>
+    <div class="note" id="check"></div>
+  </div>
+
+  <div class="card">
+    <h2>Engineered prompt (copy into any LLM)</h2>
+    <pre id="prompt"></pre>
+    <div class="row">
+      <button id="copyT">Copy template</button>
+      <button id="copyF">Copy with my query filled in</button>
+      <span class="note" id="copied" style="align-self:center"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+const LABELS=["High","Medium","Low"];
+
+const PROMPT=`You are a triage system for a customer support team that receives thousands of queries daily.
+
+Task: Read the customer query and classify its URGENCY level.
+
+Allowed outputs (choose exactly one):
+High, Medium, Low
+
+Urgency guide:
+- High: needs action right away. Examples: fraud, unauthorized or double charges, hacked or locked account, safety hazards, medical or legal threats, money lost, a time-critical deadline (today, tomorrow, event), or strong distress or escalation.
+- Medium: a real problem to fix soon but with no immediate harm. Examples: delayed or missing order, damaged or wrong item, refund status, failed payment, cancellation or return requests.
+- Low: general questions, product or policy information, feedback, suggestions, minor account changes, or the customer says there is no rush.
+
+Rules:
+1. Judge urgency from the impact and time pressure described, not from tone or capital letters alone.
+2. If the customer explicitly says it is not urgent, choose Low.
+3. When torn between two levels, choose the higher one only if there is risk of financial loss, safety harm or a near deadline.
+4. Output ONLY one word from the allowed list, spelled exactly as shown.
+5. No explanation, no punctuation, no quotes, no extra text.
+
+Examples:
+Query: Someone hacked my account and placed orders with my card! -> High
+Query: My order was due yesterday and tracking has not updated. -> Medium
+Query: Do you ship gift sets? Just curious, no rush. -> Low
+Query: I need the replacement charger by tomorrow for my exam. -> High
+Query: The shoes I received are the wrong size. -> Medium
+
+Query: {{QUERY}}
+Urgency:`;
+
+// Local rule engine: weighted phrases, with "no rush" style overrides.
+const HIGH=[["urgent",3],["urgently",3],["immediately",3],["asap",3],["right now",3],["emergency",4],["fraud",4],["unauthorized",4],["unauthorised",4],["hacked",4],["stolen",3],["scam",3],["charged twice",4],["double charged",4],["deducted twice",4],["money deducted",3],["money was deducted",3],["lost my money",4],["can’t access",3],["can't access",3],["locked out",3],["legal action",4],["lawyer",4],["chargeback",3],["consumer court",4],["police",3],["fire",3],["sparks",4],["burn",3],["shock",3],["injur",4],["allergic",3],["hospital",4],["unsafe",3],["dangerous",3],["by tomorrow",3],["by today",3],["today only",3],["tonight",2],["deadline",3],["wedding",2],["exam",2],["birthday tomorrow",3],["worst service",2],["furious",2],["unacceptable",2],["escalate",3],["still waiting",2],["multiple times",2]];
+const MED=[["delayed",2],["delay",2],["not received",2],["haven’t received",2],["haven't received",2],["hasn’t arrived",2],["hasn't arrived",2],["not arrived",2],["late",1.5],["damaged",2],["broken",2],["defective",2],["faulty",2],["not working",2],["stopped working",2],["wrong item",2],["wrong size",2],["missing",2],["refund",2],["payment failed",2],["failed payment",2],["declined",2],["cancel",2],["return",1.5],["replace",1.5],["exchange",1.5],["problem",1.5],["issue",1.5],["complaint",2],["tracking",1],["where is my",2],["charged",1.5]];
+const LOW=[["how do i",2],["how can i",2],["how to",2],["what is",2],["what are",2],["do you",2],["can you tell",2],["information",2],["just curious",3],["curious",2],["wondering",2],["question",1.5],["feedback",2],["suggestion",2],["suggest",1.5],["thank",2],["thanks",2],["restock",2],["in stock",1.5],["catalog",2],["change my email",2],["update my",1.5],["change my address",1.5],["opening hours",2],["working hours",2],["store timing",2],["warranty",1.5],["policy",1.5],["size chart",2],["discount",1],["coupon",1],["no rush",4],["not urgent",4],["whenever",3],["at your convenience",4],["no hurry",4],["when you get a chance",4]];
+
+function scoreList(t,list){let s=0;const hits=[];for(const [k,w] of list){if(t.includes(k)){s+=w;hits.push(k);}}return {s,hits};}
+function analyze(q){
+  const t=q.toLowerCase();
+  if(!t.trim())return {label:"Low",h:0,m:0,l:0};
+  const H=scoreList(t,HIGH),M=scoreList(t,MED),L=scoreList(t,LOW);
+  let h=H.s,m=M.s,l=L.s;
+  const relaxed=/no rush|not urgent|no hurry|at your convenience|whenever|when you get a chance/.test(t);
+  if(relaxed){h=0;}
+  if((t.match(/!{2,}/g)||[]).length)h+=1;
+  if(q.length>12&&q===q.toUpperCase()&&/[A-Z]{4}/.test(q))h+=1;
+  let label;
+  if(h>=3)label="High";
+  else if(relaxed&&m<4)label="Low";
+  else if(h>=2&&m>=1.5)label="High";
+  else if(m>=1.5||h>=1)label="Medium";
+  else label="Low";
+  if(label==="Medium"&&l>=3&&m<2)label="Low";
+  return {label,h,m,l};
+}
+function enforce(x){return LABELS.includes(x)?x:"Low";}
+
+const $=id=>document.getElementById(id);
+$("prompt").textContent=PROMPT;
+
+function run(){
+  const r=analyze($("q").value);
+  const out=enforce(r.label);
+  $("out").textContent=out;
+  $("out").className=out;
+  $("tags").innerHTML=LABELS.map(c=>'<span class="'+(c===out?"hit":"")+'">'+c+'</span>').join("");
+  const valid=/^[A-Za-z]+$/.test(out)&&LABELS.includes(out);
+  $("check").innerHTML=valid?'<span class="ok">✓ Output check passed:</span> one allowed word, no punctuation or extra text.':'Output check failed.';
+}
+
+const samples=[
+ "Someone hacked my account and placed orders with my card!",
+ "Money was deducted twice. Fix this immediately.",
+ "I need the replacement charger by tomorrow for my exam.",
+ "My order was due yesterday and tracking hasn’t updated.",
+ "The shoes I received are the wrong size.",
+ "Do you ship gift sets? Just curious, no rush.",
+ "Can you tell me your store opening hours?",
+ "The heater is giving off sparks!"
+];
+samples.forEach(t=>{
+  const b=document.createElement("button");
+  b.textContent=t.length>34?t.slice(0,32)+"…":t;
+  b.title=t;
+  b.onclick=()=>{$("q").value=t;run();};
+  $("chips").appendChild(b);
+});
+
+$("go").onclick=run;
+$("clear").onclick=()=>{$("q").value="";$("out").textContent="";$("out").className="";$("tags").innerHTML="";$("check").textContent="";};
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))run();});
+
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);$("copied").textContent="Copied";}
+  catch(e){
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");$("copied").textContent="Copied";}catch(_){$("copied").textContent="Copy failed, select the text manually";}
+    ta.remove();
+  }
+  setTimeout(()=>$("copied").textContent="",1800);
+}
+$("copyT").onclick=()=>copy(PROMPT);
+$("copyF").onclick=()=>copy(PROMPT.replace("{{QUERY}}",$("q").value.trim()||"{{QUERY}}"));
+</script>
+</body>
+</html>
