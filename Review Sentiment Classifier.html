@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Review Sentiment Classifier</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1b1f2a;--muted:#5d6475;--line:#dfe3ee;--accent:#4f46e5;--accent-text:#fff;--code:#f0f2f9;--pos:#0f7b4a;--neg:#c0262d;--neu:#8a6a00;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--pos:#4cd694;--neg:#ff7b80;--neu:#f0c24b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141b;--card:#1b1e28;--text:#eceef5;--muted:#9aa1b5;--line:#2c3040;--accent:#8b85ff;--accent-text:#10121a;--code:#141720;--pos:#4cd694;--neg:#ff7b80;--neu:#f0c24b;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.6rem;margin:0 0 4px}
+p.sub{margin:0 0 20px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+h2{font-size:1rem;margin:0 0 10px}
+textarea{width:100%;min-height:90px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;resize:vertical}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:8px 14px}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips button{font-size:.85rem;padding:5px 10px;color:var(--muted)}
+#out{font-size:2.2rem;font-weight:700;min-height:2.8rem;letter-spacing:.5px}
+#out.Positive{color:var(--pos)}#out.Negative{color:var(--neg)}#out.Neutral{color:var(--neu)}
+.bars{display:grid;gap:6px;margin-top:8px}
+.bar{display:grid;grid-template-columns:76px 1fr 36px;align-items:center;gap:8px;font-size:.85rem}
+.track{height:8px;border-radius:99px;background:var(--code);border:1px solid var(--line);overflow:hidden}
+.fill{height:100%;background:var(--accent);width:0}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px;margin:0;white-space:pre-wrap;word-break:break-word;font-size:.85rem;max-width:100%;overflow-x:auto}
+.note{color:var(--muted);font-size:.85rem;margin-top:8px}
+.ok{color:var(--pos);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <h1>Review Sentiment Classifier</h1>
+  <p class="sub">Enter a customer review. The output is exactly one word: Positive, Negative or Neutral.</p>
+
+  <div class="card">
+    <h2>Customer review</h2>
+    <textarea id="q" placeholder="e.g. Great quality, arrived early and works perfectly"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Analyze</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="row chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <h2>Output</h2>
+    <div id="out" aria-live="polite"></div>
+    <div class="bars" id="bars"></div>
+    <div class="note" id="check"></div>
+  </div>
+
+  <div class="card">
+    <h2>Engineered prompt (copy into any LLM)</h2>
+    <pre id="prompt"></pre>
+    <div class="row">
+      <button id="copyT">Copy template</button>
+      <button id="copyF">Copy with my review filled in</button>
+      <span class="note" id="copied" style="align-self:center"></span>
+    </div>
+  </div>
+</main>
+
+<script>
+const LABELS=["Positive","Negative","Neutral"];
+
+const PROMPT=`You are a sentiment analysis system for an online shopping company.
+
+Task: Read the customer review and decide the customer's OVERALL sentiment.
+
+Allowed outputs (choose exactly one):
+Positive, Negative, Neutral
+
+Guidelines:
+- Positive: the customer is mainly satisfied, happy or recommends the product.
+- Negative: the customer is mainly dissatisfied, frustrated or warns others.
+- Neutral: factual, balanced or mixed with no clear lean, or no opinion expressed.
+- For mixed reviews, weigh which feeling dominates the conclusion. If they truly balance out, answer Neutral.
+- Judge the customer's feeling, not the product category. Handle negation ("not bad" is mild Positive) and sarcasm.
+
+Output rules:
+1. Output ONLY one word from the allowed list, spelled exactly as shown.
+2. No explanation, no punctuation, no quotes, no extra text.
+
+Examples:
+Review: Absolutely love it, works perfectly and arrived early! -> Positive
+Review: Broke after two days. Total waste of money. -> Negative
+Review: The package contained the item as described. -> Neutral
+Review: Good screen but the battery is terrible and support ignored me. -> Negative
+Review: Delivery was slow, but the quality is excellent and I’d buy again. -> Positive
+
+Review: {{REVIEW}}
+Sentiment:`;
+
+// Local rule engine: lexicon scoring with negation and contrast handling.
+const POS=["love","loved","great","excellent","amazing","perfect","perfectly","awesome","fantastic","wonderful","good","nice","happy","satisfied","recommend","worth","best","superb","impressed","pleased","fast","quick","comfortable","sturdy","smooth","beautiful","brilliant","glad","delighted","reliable","value for money","five stars","5 stars","highly recommend","buy again"];
+const NEG=["bad","terrible","awful","worst","poor","horrible","hate","hated","disappointed","disappointing","waste","broken","broke","defective","faulty","damaged","useless","slow","late","refund","scam","fake","cheap","rude","ignored","never again","not working","stopped working","doesn’t work","doesn't work","regret","unhappy","frustrating","frustrated","overpriced","flimsy","uncomfortable","missing","wrong","cracked","one star","1 star","do not buy","don’t buy","don't buy"];
+const NEGATORS=["not","no","never","isn’t","isn't","wasn’t","wasn't","don’t","don't","doesn’t","doesn't","didn’t","didn't","hardly","barely","without"];
+const INTENS=["very","really","extremely","absolutely","totally","so","highly"];
+const CONTRAST=["but","however","although","though","yet"];
+
+function tokenize(t){return t.toLowerCase().replace(/[^a-z0-9’'\s]/g," ").split(/\s+/).filter(Boolean);}
+function scoreSeg(text){
+  let pos=0,neg=0;
+  const toks=tokenize(text);
+  const joined=" "+toks.join(" ")+" ";
+  const multi=[...POS,...NEG].filter(w=>w.includes(" "));
+  const used=[];
+  for(const m of multi){
+    if(joined.includes(" "+m+" ")){
+      const isPos=POS.includes(m);
+      if(isPos)pos+=2;else neg+=2;
+    }
+  }
+  for(let i=0;i<toks.length;i++){
+    const w=toks[i];
+    const isP=POS.includes(w),isN=NEG.includes(w);
+    if(!isP&&!isN)continue;
+    let weight=1;
+    const prev=toks.slice(Math.max(0,i-3),i);
+    if(prev.some(p=>INTENS.includes(p)))weight=1.5;
+    const negated=prev.some(p=>NEGATORS.includes(p));
+    if(negated){ if(isP)neg+=weight*0.9;else pos+=weight*0.6; }
+    else { if(isP)pos+=weight;else neg+=weight; }
+  }
+  const ex=(text.match(/!/g)||[]).length;
+  if(ex){ if(pos>neg)pos+=Math.min(ex,3)*0.3; else if(neg>pos)neg+=Math.min(ex,3)*0.3; }
+  return {pos,neg};
+}
+function analyze(review){
+  const r=review.trim();
+  if(!r)return {label:"Neutral",pos:0,neg:0};
+  // Split on contrast words; the later clause usually carries the conclusion.
+  const re=new RegExp("\\b("+CONTRAST.join("|")+")\\b","i");
+  const parts=r.split(re).filter(p=>!CONTRAST.includes(p.toLowerCase().trim()));
+  let pos=0,neg=0;
+  parts.forEach((p,i)=>{
+    const s=scoreSeg(p);
+    const w=parts.length>1&&i===parts.length-1?1.4:1;
+    pos+=s.pos*w;neg+=s.neg*w;
+  });
+  const diff=pos-neg;
+  let label="Neutral";
+  if(diff>=1)label="Positive";else if(diff<=-1)label="Negative";
+  return {label,pos,neg};
+}
+function enforce(l){return LABELS.includes(l)?l:"Neutral";}
+
+const $=id=>document.getElementById(id);
+$("prompt").textContent=PROMPT;
+
+function run(){
+  const res=analyze($("q").value);
+  const out=enforce(res.label);
+  $("out").textContent=out;
+  $("out").className=out;
+  const total=res.pos+res.neg;
+  const pPos=total?Math.round(res.pos/total*100):0;
+  const pNeg=total?100-pPos:0;
+  const pNeu=total?0:100;
+  const rows=[["Positive",pPos],["Negative",pNeg],["Neutral",out==="Neutral"&&total?50:pNeu]];
+  $("bars").innerHTML=rows.map(([n,v])=>'<div class="bar"><span>'+n+'</span><div class="track"><div class="fill" style="width:'+v+'%"></div></div><span>'+v+'%</span></div>').join("");
+  const valid=/^[A-Za-z]+$/.test(out)&&LABELS.includes(out);
+  $("check").innerHTML=valid?'<span class="ok">✓ Output check passed:</span> one allowed word, no punctuation or extra text.':'Output check failed.';
+}
+
+const samples=[
+ "Absolutely love it! Works perfectly and arrived early.",
+ "Broke after two days. Total waste of money.",
+ "The package contained the item as described.",
+ "Delivery was slow, but the quality is excellent and I’d buy again.",
+ "Good screen but the battery is terrible and support ignored me.",
+ "Not bad at all for the price.",
+ "It's okay, nothing special."
+];
+samples.forEach(t=>{
+  const b=document.createElement("button");
+  b.textContent=t.length>34?t.slice(0,32)+"…":t;
+  b.title=t;
+  b.onclick=()=>{$("q").value=t;run();};
+  $("chips").appendChild(b);
+});
+
+$("go").onclick=run;
+$("clear").onclick=()=>{$("q").value="";$("out").textContent="";$("out").className="";$("bars").innerHTML="";$("check").textContent="";};
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))run();});
+
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);$("copied").textContent="Copied";}
+  catch(e){
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");$("copied").textContent="Copied";}catch(_){$("copied").textContent="Copy failed, select the text manually";}
+    ta.remove();
+  }
+  setTimeout(()=>$("copied").textContent="",1800);
+}
+$("copyT").onclick=()=>copy(PROMPT);
+$("copyF").onclick=()=>copy(PROMPT.replace("{{REVIEW}}",$("q").value.trim()||"{{REVIEW}}"));
+</script>
+</body>
+</html>
