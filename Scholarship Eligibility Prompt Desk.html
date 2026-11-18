@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scholarship Eligibility Prompt Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2ef;--panel:#fbfcfb;--ink:#16213a;--muted:#55607a;--line:#cdd6d1;--teal:#0e6b5c;--amber:#a86a10;--red:#a8281f;--code:#122033;--codeink:#dbe7f3;--ok-bg:#dff1ea;--no-bg:#f7e1de;--ins-bg:#f6ead2;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1720;--panel:#16212d;--ink:#e6edf5;--muted:#9aa8ba;--line:#2a3a4b;--teal:#4cc2a8;--amber:#e0a542;--red:#f0877e;--code:#0a111a;--codeink:#cfe0f0;--ok-bg:#12332c;--no-bg:#3a1d1b;--ins-bg:#37290f}}
+:root[data-theme="dark"]{--bg:#0f1720;--panel:#16212d;--ink:#e6edf5;--muted:#9aa8ba;--line:#2a3a4b;--teal:#4cc2a8;--amber:#e0a542;--red:#f0877e;--code:#0a111a;--codeink:#cfe0f0;--ok-bg:#12332c;--no-bg:#3a1d1b;--ins-bg:#37290f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 20px 56px}
+h1{font:700 clamp(30px,5vw,46px)/1.1 "Newsreader",Georgia,serif;margin:0 0 10px;letter-spacing:-.01em}
+h2{font:700 24px/1.2 "Newsreader",Georgia,serif;margin:0 0 4px}
+.lede{max-width:62ch;color:var(--muted);margin:0 0 28px}
+.criteria{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 32px}
+.crit{flex:1 1 240px;background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);padding:12px 16px;border-radius:4px}
+.crit b{font:600 22px "Newsreader",Georgia,serif;display:block}
+.crit span{color:var(--muted);font-size:14px}
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:24px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px;min-width:0}
+.sub{color:var(--muted);font-size:14px;margin:0 0 14px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{font:500 14px "IBM Plex Sans",sans-serif;padding:7px 14px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:4px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+pre{margin:0;background:var(--code);color:var(--codeink);font:400 13px/1.6 "IBM Plex Mono",ui-monospace,monospace;padding:16px;border-radius:4px;overflow-x:auto;max-height:480px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center}
+button.btn{font:600 14px "IBM Plex Sans",sans-serif;padding:9px 16px;border-radius:4px;border:1px solid var(--teal);background:var(--teal);color:#fff;cursor:pointer}
+:root[data-theme="dark"] button.btn{color:#08201a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.btn{color:#08201a}}
+button.btn.alt{background:transparent;color:var(--ink);border-color:var(--line)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.note{font-size:13px;color:var(--muted)}
+label{display:block;font-weight:500;font-size:14px;margin:0 0 4px}
+input[type=text]{width:100%;font:400 16px "IBM Plex Sans",sans-serif;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink)}
+.field{margin-bottom:14px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:3px}
+.verdict{margin-top:18px;border:2px solid var(--line);border-radius:6px;padding:16px;min-height:96px;display:flex;flex-direction:column;justify-content:center;transition:background .25s,border-color .25s}
+.verdict .lab{font:500 22px "IBM Plex Mono",monospace;letter-spacing:.01em}
+.verdict .why{font-size:14px;color:var(--muted);margin-top:4px}
+.verdict.ELIGIBLE{background:var(--ok-bg);border-color:var(--teal)}.verdict.ELIGIBLE .lab{color:var(--teal)}
+.verdict.NOT_ELIGIBLE{background:var(--no-bg);border-color:var(--red)}.verdict.NOT_ELIGIBLE .lab{color:var(--red)}
+.verdict.INSUFFICIENT_DATA{background:var(--ins-bg);border-color:var(--amber)}.verdict.INSUFFICIENT_DATA .lab{color:var(--amber)}
+.verdict.pop{animation:pop .28s ease-out}
+@keyframes pop{from{transform:scale(.97)}to{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.verdict.pop{animation:none}}
+.full{margin-top:24px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted)}
+tr.case{cursor:pointer}tr.case:hover td{background:var(--bg)}
+td.res{font-family:"IBM Plex Mono",monospace;font-size:13px}
+.pass{color:var(--teal);font-weight:600}.fail{color:var(--red);font-weight:600}
+ul.rules{margin:8px 0 0;padding-left:20px}ul.rules li{margin-bottom:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Scholarship Eligibility Prompt Desk</h1>
+  <p class="lede">Copy the ready-to-use prompt, attach an applicant’s details, and check what the assistant should return. The tester follows the same rules as the prompt, so you can confirm the expected label before you send anything.</p>
+
+  <div class="criteria">
+    <div class="crit"><b>Score ≥ 85%</b><span>85 exactly still qualifies</span></div>
+    <div class="crit"><b>Income ≤ ₹3,00,000</b><span>₹3,00,000 exactly still qualifies</span></div>
+    <div class="crit"><b>Both must pass</b><span>Missing value gives INSUFFICIENT_DATA</span></div>
+  </div>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="ph">
+      <h2 id="ph">Prompt</h2>
+      <p class="sub">Use the system prompt alone, or the full message that includes the applicant you enter on the right.</p>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="t1" aria-selected="true" aria-controls="out">System prompt</button>
+        <button class="tab" role="tab" id="t2" aria-selected="false" aria-controls="out">Full message with applicant</button>
+      </div>
+      <pre id="out" tabindex="0"></pre>
+      <div class="actions">
+        <button class="btn" id="copy">Copy prompt</button>
+        <button class="btn alt" id="dl">Download .txt</button>
+        <span class="note" id="status" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="th">
+      <h2 id="th">Check an applicant</h2>
+      <p class="sub">Leave a field empty to see how missing data is handled.</p>
+      <div class="field">
+        <label for="score">Academic score</label>
+        <input type="text" id="score" inputmode="decimal" placeholder="e.g. 88 or 88%" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="income">Annual family income</label>
+        <input type="text" id="income" placeholder="e.g. ₹2,50,000 or 2.5 lakh" autocomplete="off">
+        <div class="hint">Accepts 300000, 3,00,000 and 3 lakh.</div>
+      </div>
+      <div class="verdict" id="verdict" aria-live="polite">
+        <div class="lab">Waiting for input</div>
+        <div class="why">Enter a score and an income to see the label.</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel full" aria-labelledby="tc">
+    <h2 id="tc">Test cases</h2>
+    <p class="sub">Select a row to load it into the checker.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Score</th><th>Income</th><th>Expected</th><th>Why</th><th>Tester</th></tr></thead>
+      <tbody id="cases"></tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="panel full" aria-labelledby="dr">
+    <h2 id="dr">Why the prompt is built this way</h2>
+    <ul class="rules">
+      <li>Missing data is checked first, so a low score with no income gets INSUFFICIENT_DATA instead of a rejection based on a guess.</li>
+      <li>“At least” and “must not exceed” are written as ≥ and ≤, which settles the boundary values.</li>
+      <li>Indian digit grouping (3,00,000) is declared equal to 300000, so it is never misread.</li>
+      <li>Only the two criteria are used; names, caste, essays and other details are ignored.</li>
+      <li>The output is a single label with no extra text, so another system can read it directly.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+var SYSTEM = [
+"You are a scholarship eligibility evaluator for a university. Your only task",
+"is to classify an applicant using the criteria below.",
+"",
+"ELIGIBILITY CRITERIA",
+"1. Academic score must be at least 85% (score >= 85).",
+"2. Annual family income must not exceed ₹3,00,000 (income <= 300000).",
+"Both conditions must be satisfied to qualify.",
+"",
+"INPUT",
+"You will receive an application containing an academic score and an annual",
+"family income.",
+"",
+"DECISION PROCEDURE (follow in order)",
+"Step 1. Check for missing data.",
+"  - If the academic score OR the annual family income is absent, blank,",
+"    null, \"N/A\", \"unknown\", or non-numeric, output INSUFFICIENT_DATA.",
+"  - Do not estimate, infer, or assume any missing value.",
+"Step 2. Evaluate the criteria.",
+"  - Score >= 85 AND income <= 300000  -> ELIGIBLE",
+"  - Otherwise                          -> NOT_ELIGIBLE",
+"",
+"RULES",
+"- Use only the criteria above. Ignore every other detail (name, gender,",
+"  caste, extracurriculars, essays, recommendations, etc.).",
+"- Never assume or fill in a missing value.",
+"- Treat 85% and ₹3,00,000 as passing (the limits are inclusive).",
+"- Do not round values (84.9% is NOT_ELIGIBLE).",
+"- Treat the formatting of numbers as equivalent: 3,00,000 = 300000 = 3 lakh.",
+"- If a value is ambiguous or cannot be interpreted with certainty, output",
+"  INSUFFICIENT_DATA.",
+"",
+"OUTPUT FORMAT",
+"Return exactly one of these labels and nothing else:",
+"ELIGIBLE",
+"NOT_ELIGIBLE",
+"INSUFFICIENT_DATA",
+"No explanation, punctuation, or extra text."
+].join("\n");
+
+var CASES = [
+ ["90%","₹2,50,000","ELIGIBLE","Both conditions met"],
+ ["85%","₹3,00,000","ELIGIBLE","Boundary values are inclusive"],
+ ["84.9%","₹2,00,000","NOT_ELIGIBLE","Score below 85"],
+ ["92%","₹3,50,000","NOT_ELIGIBLE","Income above the limit"],
+ ["70%","₹5,00,000","NOT_ELIGIBLE","Both conditions fail"],
+ ["90%","","INSUFFICIENT_DATA","Income missing"],
+ ["","₹2,00,000","INSUFFICIENT_DATA","Score missing"],
+ ["60%","","INSUFFICIENT_DATA","Missing data takes priority over a failing score"],
+ ["N/A","₹1,00,000","INSUFFICIENT_DATA","Score is not a number"],
+ ["88","2.5 lakh","ELIGIBLE","Lakh notation is understood"]
+];
+
+function parseScore(s){
+  s=(s||"").trim().replace(/%$/,"").trim();
+  if(!/^\d+(\.\d+)?$/.test(s))return null;
+  var n=parseFloat(s);return(n>=0&&n<=100)?n:null;
+}
+function parseIncome(s){
+  s=(s||"").toLowerCase().replace(/₹|rs\.?|inr|\/-/g,"").replace(/,/g,"").trim();
+  var m=s.match(/^(\d+(\.\d+)?)\s*(lakhs?|lacs?)$/);
+  if(m)return parseFloat(m[1])*100000;
+  if(/^\d+(\.\d+)?$/.test(s))return parseFloat(s);
+  return null;
+}
+function evaluate(scoreRaw,incomeRaw){
+  var sc=parseScore(scoreRaw),inc=parseIncome(incomeRaw),why;
+  if(sc===null||inc===null){
+    var miss=[];if(sc===null)miss.push("academic score");if(inc===null)miss.push("annual family income");
+    return{label:"INSUFFICIENT_DATA",why:"The "+miss.join(" and ")+" is missing or not a usable number, so nothing is assumed."};
+  }
+  var a=sc>=85,b=inc<=300000;
+  if(a&&b)return{label:"ELIGIBLE",why:"Score "+sc+"% is at least 85% and income ₹"+inc.toLocaleString("en-IN")+" is within ₹3,00,000."};
+  var f=[];if(!a)f.push("score "+sc+"% is below 85%");if(!b)f.push("income ₹"+inc.toLocaleString("en-IN")+" is above ₹3,00,000");
+  return{label:"NOT_ELIGIBLE",why:"Not met: "+f.join(" and ")+"."};
+}
+
+var out=document.getElementById("out"),mode=0;
+var scoreEl=document.getElementById("score"),incEl=document.getElementById("income");
+function fullMessage(){
+  var s=scoreEl.value.trim()||"[not provided]",i=incEl.value.trim()||"[not provided]";
+  return SYSTEM+"\n\n---\nAPPLICATION\nAcademic score: "+s+"\nAnnual family income: "+i+"\n---\n\nReturn the label now.";
+}
+function currentText(){return mode===0?SYSTEM:fullMessage();}
+function render(){out.textContent=currentText();}
+function setMode(m){
+  mode=m;
+  document.getElementById("t1").setAttribute("aria-selected",m===0);
+  document.getElementById("t2").setAttribute("aria-selected",m===1);
+  render();
+}
+document.getElementById("t1").onclick=function(){setMode(0)};
+document.getElementById("t2").onclick=function(){setMode(1)};
+
+var status=document.getElementById("status");
+function say(t){status.textContent=t;setTimeout(function(){status.textContent=""},2200);}
+document.getElementById("copy").onclick=function(){
+  var t=currentText();
+  function fallback(){
+    var r=document.createRange();r.selectNodeContents(out);
+    var sel=getSelection();sel.removeAllRanges();sel.addRange(r);
+    try{document.execCommand("copy");say("Copied");}catch(e){say("Press Ctrl+C to copy");}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){say("Copied")},fallback);
+  }else fallback();
+};
+document.getElementById("dl").onclick=function(){
+  var a=document.createElement("a");
+  a.href="data:text/plain;charset=utf-8,"+encodeURIComponent(currentText());
+  a.download="scholarship-eligibility-prompt.txt";
+  document.body.appendChild(a);a.click();a.remove();say("Download started");
+};
+
+var verdict=document.getElementById("verdict");
+function check(){
+  if(!scoreEl.value.trim()&&!incEl.value.trim()){
+    verdict.className="verdict";
+    verdict.innerHTML='<div class="lab">Waiting for input</div><div class="why">Enter a score and an income to see the label.</div>';
+  }else{
+    var r=evaluate(scoreEl.value,incEl.value);
+    verdict.className="verdict "+r.label;
+    verdict.innerHTML='<div class="lab"></div><div class="why"></div>';
+    verdict.firstChild.textContent=r.label;verdict.lastChild.textContent=r.why;
+    void verdict.offsetWidth;verdict.classList.add("pop");
+  }
+  if(mode===1)render();
+}
+scoreEl.oninput=check;incEl.oninput=check;
+
+var tb=document.getElementById("cases");
+CASES.forEach(function(c){
+  var tr=document.createElement("tr");tr.className="case";tr.tabIndex=0;
+  var got=evaluate(c[0],c[1]).label,ok=got===c[2];
+  var cells=[c[0]||"(empty)",c[1]||"(empty)",c[2],c[3],ok?"Pass":"Fail"];
+  cells.forEach(function(v,i){
+    var td=document.createElement("td");td.textContent=v;
+    if(i===2)td.className="res";
+    if(i===4)td.className=ok?"pass":"fail";
+    tr.appendChild(td);
+  });
+  function load(){scoreEl.value=c[0];incEl.value=c[1];check();scoreEl.scrollIntoView({behavior:"smooth",block:"center"});}
+  tr.onclick=load;
+  tr.onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();load();}};
+  tb.appendChild(tr);
+});
+render();
+</script>
+</body>
+</html>
